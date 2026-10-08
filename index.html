@@ -23,7 +23,7 @@
 <pre id="log"></pre>
 <script>
 // LIFF ID 는 주소의 ?id= 로 받는다 (LINE Login 채널에서 LIFF 앱을 만든 뒤 엔드포인트 주소에 붙인다)
-const LIFF_ID = new URLSearchParams(location.search).get('id') || '';
+const LIFF_ID = new URLSearchParams(location.search).get('id') || '2011939135-ZDRvnniq';  // 시험용 LIFF 앱 (공개 값)
 const AUTO_CLOSE = new URLSearchParams(location.search).get('stay') !== '1';
 const logEl = document.getElementById('log');
 const stateEl = document.getElementById('state');
