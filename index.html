@@ -11,11 +11,15 @@
 <style>
   body { font-family: system-ui, "Noto Sans KR", sans-serif; margin: 0; padding: 24px 16px; background: #F5F7F6; color: #18242A; font-size: 22px; line-height: 1.6; text-align: center; }
   #state { font-size: 28px; font-weight: 700; margin: 40px 0 24px; word-break: keep-all; }
+  #sub { font-size: 22px; color: #44545A; margin: 0 0 24px; word-break: keep-all; }
+  #debug { font-size: 14px; text-align: left; white-space: pre-wrap; }
   button { font-size: 26px; font-weight: 700; padding: 20px; width: 100%; border: 0; border-radius: 12px; background: #2E86C1; color: #fff; }
 </style>
 </head>
 <body>
-<div id="state">📍 지금 계신 곳을 확인하고 있어요</div>
+<div id="state">📍 지금 계신 곳 날씨를 가져올게요</div>
+<div id="sub">잠깐만 기다려 주세요. 이 화면은 저절로 닫혀요</div>
+<pre id="debug" hidden></pre>
 <button id="retry" hidden>다시</button>
 <script>
 // 에이전트는 이 제목인 위치만 날씨용으로 받는다 (agent/weather/tool.py WEATHER_LOC_TITLE) — 글자 그대로
@@ -24,9 +28,18 @@ const TITLE = '📍 지금 계신 곳';
 const LIFF_ID = new URLSearchParams(location.search).get('id') || '2011939135-ZDRvnniq';
 const stateEl = document.getElementById('state');
 const retryEl = document.getElementById('retry');
+const subEl = document.getElementById('sub');
+// ?debug=1 이면 단계별 걸린 시간을 화면에 (어르신 화면에는 안 보임 — 느린 곳 찾기용)
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+const t0 = performance.now();
+const debugEl = document.getElementById('debug');
+debugEl.hidden = !DEBUG;
+function mark(step) { if (DEBUG) debugEl.textContent += step + ': ' + ((performance.now() - t0) / 1000).toFixed(1) + '초\n'; }
 
 function fail(text) {
+  mark('실패');
   stateEl.textContent = text;
+  subEl.hidden = true;
   retryEl.hidden = false;
 }
 
@@ -39,10 +52,10 @@ function readLocation() {
 
 async function run() {
   retryEl.hidden = true;
-  stateEl.textContent = '📍 지금 계신 곳을 확인하고 있어요';
   let pos;
   try {
     pos = await readLocation();
+    mark('위치 읽음');
   } catch (e) {
     return fail('위치를 못 읽었어요. 다시 눌러 주세요');
   }
@@ -53,9 +66,11 @@ async function run() {
   }
   try {
     await liff.sendMessages([{ type: 'location', title: TITLE, address: '날씨 확인', latitude: lat, longitude: lng }]);
+    mark('보냄');
   } catch (e) {
     return fail('보내지 못했어요. 다시 눌러 주세요');
   }
+  if (DEBUG) return;  // 시간을 볼 수 있게 닫지 않는다
   liff.closeWindow();
 }
 
@@ -63,7 +78,9 @@ retryEl.onclick = () => location.reload();  // 처음부터 다시 (LIFF 준비 
 
 (async () => {
   try {
+    mark('페이지 열림');
     await liff.init({ liffId: LIFF_ID });
+    mark('LIFF 준비');
   } catch (e) {
     return fail('지금은 열 수 없어요. 다시 눌러 주세요');
   }
