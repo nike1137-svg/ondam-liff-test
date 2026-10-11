@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>온담이 대화 시험</title>
+<style>
+ body{font-family:sans-serif;margin:16px;font-size:22px;line-height:1.5;background:#fff;color:#222}
+ h1{font-size:26px} .r{padding:8px 12px;margin:8px 0;border-radius:8px;background:#f2f2f2}
+ .ok{background:#d5f5e3} .no{background:#fadbd8} .wait{background:#fdebd0}
+ button{font-size:28px;padding:22px;width:100%;margin-top:16px;border-radius:12px;border:0;background:#27ae60;color:#fff}
+ pre{font-size:13px;white-space:pre-wrap;color:#666}
+</style></head><body>
+<h1>온담이 대화 시험 (버리는 실험)</h1>
+<p>초록 버튼을 <b>한 번만</b> 누르고, 그 뒤로는 화면을 누르지 마세요.</p>
+<button id="go">대화 시작 (한 번만)</button>
+<div id="s1" class="r">1. 마이크 허락: 아직</div>
+<div id="s2" class="r">2. 3초 듣기(녹음): 아직</div>
+<div id="s3" class="r">3. 안 누르고 들은 말 다시 들려주기: 아직</div>
+<div id="s4" class="r">4. 10초 뒤 안 누르고 삐 소리: 아직</div>
+<pre id="info"></pre>
+<script>
+// 개인 정보 없음. 녹음은 이 화면 안에서만 다시 들려주고 어디로도 보내지 않으며, 화면을 닫으면 사라진다.
+function set(id, cls, text){ const e=document.getElementById(id); e.textContent=text; e.className='r '+cls; }
+const info=document.getElementById('info');
+info.textContent='기기: '+navigator.userAgent+'\n마이크 기능: '+!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)+' · 녹음 기능: '+(typeof MediaRecorder!=='undefined');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+document.getElementById('go').onclick=async()=>{
+  document.getElementById('go').disabled=true;
+  // 누른 그 순간에 소리 장치를 깨워 둔다 (그 뒤 자동 재생이 되는지 보려고)
+  const beep=new Audio('beep.mp3'); beep.volume=0.01; try{ await beep.play(); beep.pause(); }catch(e){}
+  let stream;
+  try{
+    set('s1','wait','1. 마이크 허락: 묻는 중…');
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    set('s1','ok','1. 마이크 허락: ✅ 됨');
+  }catch(e){ set('s1','no','1. 마이크 허락: ❌ '+e.name); }
+  if(stream && typeof MediaRecorder!=='undefined'){
+    try{
+      const rec=new MediaRecorder(stream); const parts=[];
+      rec.ondataavailable=e=>parts.push(e.data);
+      const done=new Promise(r=>rec.onstop=r);
+      set('s2','wait','2. 3초 듣기: 🎤 지금 말씀해 보세요 「안녕 온담아」');
+      rec.start(); await sleep(3000); rec.stop(); await done;
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(parts,{type:parts[0]?parts[0].type:'audio/webm'});
+      set('s2', blob.size>1000?'ok':'no','2. 3초 듣기: '+(blob.size>1000?'✅ ':'❌ ')+Math.round(blob.size/1024)+'KB ('+blob.type+')');
+      await sleep(1500);
+      const a=new Audio(URL.createObjectURL(blob));
+      try{ await a.play(); set('s3','ok','3. 다시 들려주기: ✅ 안 누르고 재생됨 (내 목소리 들리셨나요?)'); }
+      catch(e){ set('s3','no','3. 다시 들려주기: ❌ 막힘 ('+e.name+')'); }
+    }catch(e){ set('s2','no','2. 3초 듣기: ❌ '+e.name); }
+  } else if(stream){ set('s2','no','2. 3초 듣기: ❌ 녹음 기능 없음'); }
+  set('s4','wait','4. 10초 기다리는 중… 누르지 마세요');
+  await sleep(10000);
+  const b=new Audio('beep.mp3?'+Date.now());
+  try{ await b.play(); set('s4','ok','4. 10초 뒤 삐 소리: ✅ 안 누르고 재생됨 (들리셨나요?)'); }
+  catch(e){ set('s4','no','4. 10초 뒤 삐 소리: ❌ 막힘 ('+e.name+')'); }
+};
+</script>
+</body></html>
