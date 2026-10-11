@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>온담이 소리 시험</title>
+<style>
+ body{font-family:sans-serif;margin:16px;font-size:22px;line-height:1.5;background:#fff;color:#222}
+ h1{font-size:26px} .r{padding:8px 12px;margin:8px 0;border-radius:8px;background:#f2f2f2}
+ .ok{background:#d5f5e3} .no{background:#fadbd8}
+ button{font-size:26px;padding:18px;width:100%;margin-top:16px;border-radius:12px;border:0;background:#2e86c1;color:#fff}
+ pre{font-size:13px;white-space:pre-wrap;color:#666}
+</style></head><body>
+<h1>온담이 소리 시험 (버리는 실험)</h1>
+<div id="a1" class="r">1. 열리자마자 기기 음성: 시험 중…</div>
+<div id="a2" class="r">2. 열리자마자 소리 파일: 시험 중…</div>
+<div id="b1" class="r">3. 누른 뒤 기기 음성: 아직</div>
+<div id="b2" class="r">4. 누른 뒤 소리 파일: 아직</div>
+<button id="tap">여기를 한 번 눌러 주세요</button>
+<pre id="info"></pre>
+<script>
+// 개인 정보 없음. 결과는 화면에만 보이고 어디로도 보내지 않는다.
+const SAY = '안녕하세요, 온담이예요. 오늘은 맑고 최고 이십삼 도예요.';
+function set(id, ok, text){ const e=document.getElementById(id); e.textContent=text; e.className='r '+(ok?'ok':'no'); }
+const info=document.getElementById('info');
+function koVoices(){ try { return speechSynthesis.getVoices().filter(v=>/^ko/i.test(v.lang)); } catch(e){ return []; } }
+function speak(id, label){
+  if(!('speechSynthesis' in window)){ set(id,false,label+' 기기 음성: ❌ 이 화면에는 음성 기능이 없음'); return; }
+  const u=new SpeechSynthesisUtterance(SAY); u.lang='ko-KR';
+  const v=koVoices(); if(v.length) u.voice=v[0];
+  let started=false;
+  u.onstart=()=>{ started=true; set(id,true,label+' 기기 음성: ✅ 말하기 시작함 (들리셨나요?)'); };
+  u.onerror=(e)=>set(id,false,label+' 기기 음성: ❌ 오류 '+(e.error||''));
+  try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch(e){ set(id,false,label+' 기기 음성: ❌ '+e.name); return; }
+  setTimeout(()=>{ if(!started) set(id,false,label+' 기기 음성: ❌ 3초 안에 시작 안 함'); },3000);
+}
+function play(id, label){
+  const a=new Audio('beep.mp3?'+Date.now());
+  a.play().then(()=>set(id,true,label+' 소리 파일: ✅ 재생됨 (삐 소리 들리셨나요?)'))
+          .catch(e=>set(id,false,label+' 소리 파일: ❌ 막힘 ('+e.name+')'));
+}
+function showInfo(){
+  info.textContent='기기: '+navigator.userAgent+'\n음성 기능: '+('speechSynthesis' in window)+' · 한국어 목소리 '+koVoices().length+'개 / 전체 '+(('speechSynthesis' in window)?speechSynthesis.getVoices().length:0)+'개';
+}
+window.addEventListener('load',()=>{
+  showInfo();
+  if('speechSynthesis' in window && speechSynthesis.getVoices().length===0){
+    speechSynthesis.onvoiceschanged=()=>showInfo();
+  }
+  setTimeout(()=>{ speak('a1','1. 열리자마자'); play('a2','2. 열리자마자'); },800);
+});
+document.getElementById('tap').onclick=()=>{ speak('b1','3. 누른 뒤'); setTimeout(()=>play('b2','4. 누른 뒤'),4500); showInfo(); };
+</script>
+</body></html>
