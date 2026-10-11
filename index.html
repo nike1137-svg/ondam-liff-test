@@ -3,98 +3,75 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>온담이 위치 시험</title>
-<!-- 버리는 실험 페이지 (온담이 v2 4단계 설계 8절). LIFF 안에서 위치를 읽어 대화방에 위치 메시지로 보낸다.
+<title>온담이 날씨 위치</title>
+<!-- 온담이 ☀️ 카드의 [📍 지금 있는 곳 날씨] 버튼이 여는 페이지 (온담이 v2 4단계 Task 10).
+     열리면 위치를 읽어 대화방에 위치 메시지 하나로 보내고 바로 닫는다. 위치는 이 페이지가 저장하지 않는다.
      LIFF SDK 는 v2.31.1 이상 (v2.20.0~v2.31.0 보안 문제로 폐기 — LINE 공지 2026-09-30) -->
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/versions/2.31.1/sdk.js"></script>
 <style>
-  body { font-family: system-ui, "Noto Sans KR", sans-serif; margin: 0; padding: 20px; background: #F5F7F6; color: #18242A; font-size: 20px; line-height: 1.6; }
-  h1 { font-size: 24px; margin: 0 0 12px; }
-  #state { font-size: 26px; font-weight: 700; margin: 16px 0; }
-  button { font-size: 22px; padding: 16px; width: 100%; border: 0; border-radius: 10px; background: #2E86C1; color: #fff; margin: 8px 0; }
-  pre { font-size: 14px; background: #fff; border: 1px solid #D5DDDC; border-radius: 8px; padding: 10px; white-space: pre-wrap; word-break: break-all; }
+  body { font-family: system-ui, "Noto Sans KR", sans-serif; margin: 0; padding: 24px 16px; background: #F5F7F6; color: #18242A; font-size: 22px; line-height: 1.6; text-align: center; }
+  #state { font-size: 28px; font-weight: 700; margin: 40px 0 24px; word-break: keep-all; }
+  button { font-size: 26px; font-weight: 700; padding: 20px; width: 100%; border: 0; border-radius: 12px; background: #2E86C1; color: #fff; }
 </style>
 </head>
 <body>
-<h1>📍 온담이 위치 시험</h1>
-<div id="state">준비 중…</div>
-<button id="retry" hidden>다시 위치 읽기</button>
-<button id="close" hidden>닫기</button>
-<pre id="log"></pre>
+<div id="state">📍 지금 계신 곳을 확인하고 있어요</div>
+<button id="retry" hidden>다시</button>
 <script>
-// LIFF ID 는 주소의 ?id= 로 받는다 (LINE Login 채널에서 LIFF 앱을 만든 뒤 엔드포인트 주소에 붙인다)
-const LIFF_ID = new URLSearchParams(location.search).get('id') || '2011939135-ZDRvnniq';  // 시험용 LIFF 앱 (공개 값)
-const AUTO_CLOSE = new URLSearchParams(location.search).get('stay') !== '1';
-const logEl = document.getElementById('log');
+// 에이전트는 이 제목인 위치만 날씨용으로 받는다 (agent/weather/tool.py WEATHER_LOC_TITLE) — 글자 그대로
+const TITLE = '📍 지금 계신 곳';
+// LIFF ID 는 주소의 ?id= 로도 받는다 (공개 값)
+const LIFF_ID = new URLSearchParams(location.search).get('id') || '2011939135-ZDRvnniq';
 const stateEl = document.getElementById('state');
-const t0 = Date.now();
-function log(k, v) { logEl.textContent += k + ': ' + (typeof v === 'string' ? v : JSON.stringify(v)) + '\n'; }
-function say(s) { stateEl.textContent = s; }
+const retryEl = document.getElementById('retry');
 
-// 몇 번째 열었는지 (이 기기·이 브라우저 기준) — "두 번째에도 권한 창이 뜨는가" 판정용
-let openCount = 0;
-try { openCount = Number(localStorage.getItem('ondam-open') || 0) + 1; localStorage.setItem('ondam-open', String(openCount)); } catch (e) { openCount = -1; }
-
-async function permissionState() {
-  try { return (await navigator.permissions.query({ name: 'geolocation' })).state; } catch (e) { return '알 수 없음(' + e.name + ')'; }
+function fail(text) {
+  stateEl.textContent = text;
+  retryEl.hidden = false;
 }
 
 function readLocation() {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject({ code: 'no_geolocation', message: '이 화면은 위치 기능이 없어요' });
+    if (!navigator.geolocation) return reject(new Error('no_geolocation'));
     navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 20000, maximumAge: 600000 });
   });
 }
 
 async function run() {
-  say('위치를 읽는 중…');
-  log('위치 권한 (읽기 전)', await permissionState());
-  const t1 = Date.now();
+  retryEl.hidden = true;
+  stateEl.textContent = '📍 지금 계신 곳을 확인하고 있어요';
+  let pos;
   try {
-    const pos = await readLocation();
-    const sec = ((Date.now() - t1) / 1000).toFixed(1);
-    const acc = Math.round(pos.coords.accuracy);
-    log('위치 읽기', '성공 ' + sec + '초, 정확도 약 ' + acc + 'm');
-    log('위치 권한 (읽은 뒤)', await permissionState());
-    if (liff.isInClient()) {
-      await liff.sendMessages([{
-        type: 'location',
-        title: '지금 계신 곳 (시험 ' + openCount + '번째)',
-        address: '정확도 약 ' + acc + 'm · ' + sec + '초',
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude
-      }]);
-      log('대화방에 위치 보내기', '성공');
-      say('✅ 보냈어요');
-      if (AUTO_CLOSE) setTimeout(() => liff.closeWindow(), 1500);
-    } else {
-      say('✅ 위치는 읽었어요 (LINE 밖이라 보내지 않음)');
-    }
+    pos = await readLocation();
   } catch (e) {
-    log('위치 읽기 실패', { code: e.code, message: e.message });
-    log('위치 권한 (실패 뒤)', await permissionState());
-    say('❌ 위치를 못 읽었어요');
-    document.getElementById('retry').hidden = false;
+    return fail('위치를 못 읽었어요. 다시 눌러 주세요');
   }
-  document.getElementById('close').hidden = false;
+  const lat = pos && pos.coords && pos.coords.latitude;
+  const lng = pos && pos.coords && pos.coords.longitude;
+  if (typeof lat !== 'number' || typeof lng !== 'number') {  // 좌표가 없으면 보내지 않는다
+    return fail('위치를 못 읽었어요. 다시 눌러 주세요');
+  }
+  try {
+    await liff.sendMessages([{ type: 'location', title: TITLE, address: '날씨 확인', latitude: lat, longitude: lng }]);
+  } catch (e) {
+    return fail('보내지 못했어요. 다시 눌러 주세요');
+  }
+  liff.closeWindow();
 }
 
-document.getElementById('retry').onclick = run;
-document.getElementById('close').onclick = () => { try { liff.closeWindow(); } catch (e) { window.close(); } };
+retryEl.onclick = () => location.reload();  // 처음부터 다시 (LIFF 준비 실패 때도)
 
 (async () => {
-  log('몇 번째 열기', openCount);
-  if (!LIFF_ID) { say('❌ 주소에 ?id= 가 없어요'); return; }
   try {
     await liff.init({ liffId: LIFF_ID });
-    log('LINE 안에서 열림', liff.isInClient());
-    log('기기', liff.getOS() + ' / LINE ' + (liff.getLineVersion() || '?') + ' / LIFF ' + liff.getVersion());
-    log('LIFF 준비', ((Date.now() - t0) / 1000).toFixed(1) + '초');
-    await run();
   } catch (e) {
-    log('LIFF 준비 실패', { code: e.code, message: e.message });
-    say('❌ LIFF 준비 실패');
+    return fail('지금은 열 수 없어요. 다시 눌러 주세요');
   }
+  if (!liff.isInClient()) {
+    stateEl.textContent = 'LINE 대화방에서 [📍] 버튼을 눌러 주세요';
+    return;
+  }
+  await run();
 })();
 </script>
 </body>
