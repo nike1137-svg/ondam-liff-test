@@ -22,8 +22,18 @@
 <pre id="debug" hidden></pre>
 <button id="retry" hidden>다시</button>
 <script>
-// 에이전트는 이 제목인 위치만 날씨용으로 받는다 (agent/weather/tool.py WEATHER_LOC_TITLE) — 글자 그대로
-const TITLE = '📍 지금 계신 곳';
+// 에이전트는 제목으로 무엇을 위한 위치인지 안다 (agent/life/quick.py, agent/weather/tool.py — 글자 그대로)
+// LIFF 는 ?for= 를 liff.init 뒤에 location.search 로 돌려준다 — init 전에는 liff.state 안에 있다
+function purpose() {
+  const p = new URLSearchParams(location.search);
+  const direct = p.get('for');
+  if (direct) return direct;
+  const state = p.get('liff.state');
+  return state ? new URLSearchParams(state.replace(/^[^?]*\?/, '')).get('for') : null;
+}
+const TITLES = { transit: '🚌 지금 계신 곳', pharmacy: '💊 지금 계신 곳' };
+const NO_LOC = { transit: '🚌 위치 없음', pharmacy: '💊 위치 없음' };
+const HEADS = { transit: '🚌 지금 계신 곳 근처 버스·지하철을 찾을게요', pharmacy: '💊 지금 계신 곳 근처 약국을 찾을게요' };
 // LIFF ID 는 주소의 ?id= 로도 받는다 (공개 값)
 const LIFF_ID = new URLSearchParams(location.search).get('id') || '2011939135-ZDRvnniq';
 const stateEl = document.getElementById('state');
@@ -43,29 +53,46 @@ function fail(text) {
   retryEl.hidden = false;
 }
 
-function readLocation() {
+function readLocation(f) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('no_geolocation'));
-    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 20000, maximumAge: 600000 });
+    // 🚌·💊 는 10초(못 받으면 에이전트가 집 앞 정류장 등으로), 날씨는 20초 그대로
+    const timeout = NO_LOC[f] ? 10000 : 20000;
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout, maximumAge: 600000 });
   });
+}
+
+// 🚌·💊 는 위치를 못 받으면 안내 화면 대신 글 신호를 보내고 닫는다 (어르신이 다시 누르지 않게)
+async function noLocation(f) {
+  try {
+    await liff.sendMessages([{ type: 'text', text: NO_LOC[f] }]);
+    mark('위치 없음 보냄');
+  } catch (e) {
+    return fail('보내지 못했어요. 다시 눌러 주세요');
+  }
+  if (DEBUG) return;
+  liff.closeWindow();
 }
 
 async function run() {
   retryEl.hidden = true;
+  const f = purpose();
   let pos;
   try {
-    pos = await readLocation();
+    pos = await readLocation(f);
     mark('위치 읽음');
   } catch (e) {
+    if (NO_LOC[f]) return noLocation(f);
     return fail('위치를 못 읽었어요. 다시 눌러 주세요');
   }
   const lat = pos && pos.coords && pos.coords.latitude;
   const lng = pos && pos.coords && pos.coords.longitude;
   if (typeof lat !== 'number' || typeof lng !== 'number') {  // 좌표가 없으면 보내지 않는다
+    if (NO_LOC[f]) return noLocation(f);
     return fail('위치를 못 읽었어요. 다시 눌러 주세요');
   }
   try {
-    await liff.sendMessages([{ type: 'location', title: TITLE, address: '날씨 확인', latitude: lat, longitude: lng }]);
+    await liff.sendMessages([{ type: 'location', title: TITLES[f] || '📍 지금 계신 곳', address: '위치 확인', latitude: lat, longitude: lng }]);
     mark('보냄');
   } catch (e) {
     return fail('보내지 못했어요. 다시 눌러 주세요');
@@ -81,6 +108,8 @@ retryEl.onclick = () => location.reload();  // 처음부터 다시 (LIFF 준비 
     mark('페이지 열림');
     await liff.init({ liffId: LIFF_ID });
     mark('LIFF 준비');
+    if (HEADS[purpose()]) stateEl.textContent = HEADS[purpose()];
+    mark('for=' + purpose());
   } catch (e) {
     return fail('지금은 열 수 없어요. 다시 눌러 주세요');
   }
